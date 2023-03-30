@@ -438,7 +438,12 @@ class Utils
 
         foreach ($json['inputs'] as $param) {
             if (isset($param['type'])) {
-                $typeName[] = $param['type'];
+                if(isset($param['components']) && is_array($param['components'])) {
+                    $typeName[] = self::jsonMethodToString(['name' => '', 'inputs' => $param['components']]);
+                }
+                else {                    
+                    $typeName[] = $param['type'];
+                }
             }
         }
         return $json['name'] . '(' . implode(',', $typeName) . ')';

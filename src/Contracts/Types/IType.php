@@ -28,12 +28,12 @@ interface IType
      */
     public function isDynamicType();
 
-    /**
-     * inputFormat
-     * 
-     * @param mixed $value
-     * @param string $name
-     * @return string
-     */
-    public function inputFormat($value, $name);
+    // /**
+    //  * inputFormat
+    //  * 
+    //  * @param mixed $value
+    //  * @param string $name
+    //  * @return string
+    //  */
+    // public function inputFormat($value, $name);
 }

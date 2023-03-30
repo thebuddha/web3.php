@@ -196,7 +196,7 @@ class SolidityType
      * @param string $name
      * @return string
      */
-    public function encode($value, $name)
+    public function encode($value, $name, $inputMetadata = false)
     {
         if ($this->isDynamicArray($name)) {
             $length = count($value);
@@ -218,7 +218,8 @@ class SolidityType
             }
             return $result;
         }
-        return $this->inputFormat($value, $name);
+
+        return $this->inputFormat($value, $name, $inputMetadata);
     }
 
     /**
@@ -229,7 +230,7 @@ class SolidityType
      * @param string $name
      * @return array
      */
-    public function decode($value, $offset, $name)
+    public function decode($value, $offset, $name, $output_type_hint = false)
     {
         if ($this->isDynamicArray($name)) {
             $arrayOffset = (int) Utils::toBn('0x' . mb_substr($value, $offset * 2, 64))->toString();
@@ -263,7 +264,8 @@ class SolidityType
             $length = (int) Utils::toBn('0x' . mb_substr($value, $dynamicOffset * 2, 64))->toString();
             $roundedLength = floor(($length + 31) / 32);
             $param = mb_substr($value, $dynamicOffset * 2, ( 1 + $roundedLength) * 64);
-            return $this->outputFormat($param, $name);
+            // return $this->outputFormat($param, $name);
+            return $this->outputFormat($param, $name, $output_type_hint);
         }
         $length = $this->staticPartLength($name);
         $param = mb_substr($value, $offset * 2, $length * 2);

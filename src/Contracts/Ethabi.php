@@ -13,6 +13,14 @@ namespace Web3\Contracts;
 
 use InvalidArgumentException;
 use stdClass;
+use Web3\Contracts\Types\Address;
+use Web3\Contracts\Types\Boolean;
+use Web3\Contracts\Types\Bytes;
+use Web3\Contracts\Types\DynamicBytes;
+use Web3\Contracts\Types\Integer;
+use Web3\Contracts\Types\Str;
+use Web3\Contracts\Types\Tuple;
+use Web3\Contracts\Types\Uinteger;
 use Web3\Utils;
 use Web3\Formatters\IntegerFormatter;
 
@@ -84,6 +92,20 @@ class Ethabi
         // 
     }
 
+    public static function factory()
+	{
+		return new Ethabi([
+			'address' => Address::class,
+			'bool' => Boolean::class,
+			'bytes' => Bytes::class,
+			'dynamicBytes' => DynamicBytes::class,
+			'int' => Integer::class,
+			'string' => Str::class,
+			'uint' => Uinteger::class,
+			'tuple' => Tuple::class
+		]);
+	}
+
     /**
      * encodeFunctionSignature
      * 
@@ -120,12 +142,22 @@ class Ethabi
      * @param mixed $param
      * @return string
      */
-    public function encodeParameter($type, $param)
+    /*public function encodeParameter($type, $param)
     {
         if (!is_string($type)) {
             throw new InvalidArgumentException('The type to encodeParameter must be string.');
         }
         return $this->encodeParameters([$type], [$param]);
+    }*/
+
+    public function encodeParameter($type, $param)
+    {
+        $solidityTypes = $this->getSolidityTypes([$type['type']]);
+        if(sizeof($solidityTypes) < 1) {
+            throw new InvalidArgumentException('encodeParameter type not found.');
+        }
+
+        return call_user_func([$solidityTypes[0], 'encode'], $param, $type['type']);
     }
 
     /**
@@ -159,7 +191,10 @@ class Ethabi
         $encodes = array_fill(0, $typesLength, '');
 
         foreach ($solidityTypes as $key => $type) {
-            $encodes[$key] = call_user_func([$type, 'encode'], $params[$key], $types[$key]);
+            if($types[$key] === 'tuple') {
+                $type->setComponents($inputTypes['inputs'][$key]['components']);
+            }
+            $encodes[$key] = call_user_func([$type, 'encode'], $params[$key], $types[$key], $inputTypes['inputs'][$key]);
         }
         $dynamicOffset = 0;
 
@@ -173,6 +208,7 @@ class Ethabi
                 $dynamicOffset += $roundedStaticPartLength;
             }
         }
+
         return '0x' . $this->encodeMultiWithOffset($types, $solidityTypes, $encodes, $dynamicOffset);
     }
 
@@ -235,11 +271,17 @@ class Ethabi
         $param = mb_strtolower(Utils::stripZero($param));
 
         for ($i=0; $i<$typesLength; $i++) {
-            if (isset($outputTypes['outputs'][$i]['name']) && empty($outputTypes['outputs'][$i]['name']) === false) {
-                $result[$outputTypes['outputs'][$i]['name']] = $solidityTypes[$i]->decode($param, $offsets[$i], $types[$i]);
-            } else {
-                $result[$i] = $solidityTypes[$i]->decode($param, $offsets[$i], $types[$i]);
+            // if (isset($outputTypes['outputs'][$i]['name']) && empty($outputTypes['outputs'][$i]['name']) === false) {
+            //     $result[$outputTypes['outputs'][$i]['name']] = $solidityTypes[$i]->decode($param, $offsets[$i], $types[$i]);
+            // } else {
+            //     $result[$i] = $solidityTypes[$i]->decode($param, $offsets[$i], $types[$i]);
+            // }
+            $outputTypeHint = $outputTypes['outputs'][$i] ?? false;
+        	$name = $outputTypes['outputs'][$i]['name'] ?? "";
+        	if (empty($name)) {
+                $name = $i;
             }
+			$result[$name] = $solidityTypes[$i]->decode($param, $offsets[$i], $types[$i], $outputTypeHint);
         }
 
         return $result;
@@ -263,20 +305,21 @@ class Ethabi
 
             if (preg_match('/^([a-zA-Z]+)/', $type, $match) === 1) {
                 if (isset($this->types[$match[0]])) {
-                    $className = $this->types[$match[0]];
+                    $instance = new $this->types[$match[0]];
 
-                    if (call_user_func([$this->types[$match[0]], 'isType'], $type) === false) {
+                    if ($instance->isType($type) === false) {
                         // check dynamic bytes
                         if ($match[0] === 'bytes') {
-                            $className = $this->types['dynamicBytes'];
+                            $instance = new $this->types['dynamicBytes'];
                         } else {
                             throw new InvalidArgumentException('Unsupport solidity parameter type: ' . $type);
                         }
                     }
-                    $solidityTypes[$key] = $className;
+                    $solidityTypes[$key] = $instance;
                 }
             }
         }
+
         return $solidityTypes;
     }
 
@@ -291,7 +334,13 @@ class Ethabi
      */
     protected function encodeWithOffset($type, $solidityType, $encoded, $offset)
     {
-        if ($solidityType->isDynamicArray($type)) {
+        if ($solidityType instanceof Tuple) {
+
+            $result = $this->encodeParameters(['inputs' => $solidityType->getComponents()], $encoded);
+
+            return substr($result, 2);
+        }
+        else if ($solidityType->isDynamicArray($type)) {
             $nestedName = $solidityType->nestedName($type);
             $nestedStaticPartLength = $solidityType->staticPartLength($type);
             $result = $encoded[0];
@@ -306,6 +355,7 @@ class Ethabi
                     $result .= IntegerFormatter::format($offset + $i * $nestedStaticPartLength + $previousLength * 32);
                 }
             }
+
             for ($i=0; $i<count($encoded); $i++) {
                 // $bn = Utils::toBn($result);
                 // $divided = $bn->divide(Utils::toBn(2));
@@ -318,6 +368,7 @@ class Ethabi
                 $additionalOffset = floor(mb_strlen($result) / 2);
                 $result .= $this->encodeWithOffset($nestedName, $solidityType, $encoded[$i], $offset + $additionalOffset);
             }
+
             return mb_substr($result, 64);
         } elseif ($solidityType->isStaticArray($type)) {
             $nestedName = $solidityType->nestedName($type);
@@ -346,8 +397,10 @@ class Ethabi
                 $additionalOffset = floor(mb_strlen($result) / 2);
                 $result .= $this->encodeWithOffset($nestedName, $solidityType, $encoded[$i], $offset + $additionalOffset);
             }
+
             return $result;
         }
+
         return $encoded;
     }
 
@@ -376,10 +429,10 @@ class Ethabi
         foreach ($solidityTypes as $key => $type) {
             if ($type->isDynamicType($types[$key]) || $type->isDynamicArray($types[$key])) {
                 $e = $this->encodeWithOffset($types[$key], $type, $encodes[$key], $dynamicOffset);
-                // $dynamicOffset += floor(mb_strlen($e) / 2);
                 $result .= $e;
             }
         }
+
         return $result;
     }
 }
