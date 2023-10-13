@@ -31,6 +31,11 @@ class TransactionValidator
         if (!is_array($value)) {
             return false;
         }
+
+        if(count($value) == 1 && isset($value['data']) && HexValidator::validate($value['data'])) {
+            return true;
+        }
+
         if (!isset($value['from'])) {
             return false;
         }
