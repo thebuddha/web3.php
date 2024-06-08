@@ -39,6 +39,6 @@ class IntegerFormatter implements IFormatter
         if ($padded !== 'f') {
             $padded = '0';
         }        
-        return implode('', array_fill(0, $digit-mb_strlen($bnHex), $padded)) . $bnHex;
+        return implode('', array_fill(0, max($digit - mb_strlen($bnHex), 0), $padded)) . $bnHex;
     }
 }
