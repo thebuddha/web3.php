@@ -34,11 +34,13 @@ class IntegerFormatter implements IFormatter
         }
         $bn = Utils::toBn($value);
         $bnHex = $bn->toHex(true);
+        $bnHex = mb_substr($bnHex, $digit * -1);
         $padded = mb_substr($bnHex, 0, 1);
 
         if ($padded !== 'f') {
             $padded = '0';
-        }        
+        }
+
         return implode('', array_fill(0, max($digit - mb_strlen($bnHex), 0), $padded)) . $bnHex;
     }
 }
